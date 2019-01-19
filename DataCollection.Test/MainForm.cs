@@ -16,12 +16,16 @@ namespace _2019_Scouting
 {
 	public partial class MainForm : Form
 	{
-		SortedList<int, SerialPort> _PortList = new SortedList<int, SerialPort>(8);
+		private const int kControllerCount = 8;
+		private const int kButtonCount = 8;
+		private Color kDefautlBkColor = Color.FromArgb(255, 240, 240, 240);
 
-		Button[,] _Buttons = new Button[8, 8];
-		GroupBox[] _Controllers = new GroupBox[8];
+		Button[,] _Buttons = new Button[kControllerCount, kButtonCount];
+		GroupBox[] _Controllers = new GroupBox[kControllerCount];
 
 		Timer _PollingTimer;
+
+		DataCollector.DataCollector _DataCollector;
 
 		public MainForm()
 		{
@@ -29,21 +33,16 @@ namespace _2019_Scouting
 
 			FillControllArrays();
 
-			foreach (string portName in System.IO.Ports.SerialPort.GetPortNames())
+			_DataCollector = new DataCollector.DataCollector(kControllerCount);
+
+			for (var key = 0; key < kControllerCount; key++)
 			{
-				Debug.WriteLine(portName);
-				if (Convert.ToInt16(portName.Substring(3)) <= 3) continue;
-
-				var port = new SerialPort(portName, 115200, Parity.None, 8, StopBits.One);
-				port.Open();
-				port.Write("s");
-				var csSwitches = port.ReadLine();
-				int key = (Convert.ToInt32(csSwitches[3])) - 0x30;
-
-				_PortList.Add(key, port);
+				if (!_DataCollector.Active[key])
+					continue;
 
 				_Controllers[key].Enabled = true;
-				_Controllers[key].Text = portName;
+				_Controllers[key].Text = _DataCollector.PortInfo[key];
+
 				switch (key)
 				{
 					case 0:
@@ -65,21 +64,41 @@ namespace _2019_Scouting
 				}
 			}
 
+			_DataCollector.StartPolling(Convert.ToUInt32(updnPolling.Value));
 			_PollingTimer = new Timer();
 			_PollingTimer.Interval = Convert.ToInt16(updnPolling.Value);
 			_PollingTimer.Tick += new EventHandler(PollingEvent);
 			_PollingTimer.Start();
 		}
 
-		private void cbUnoList_SelectedIndexChanged(object sender, EventArgs e)
-		{
-
-		}
-
 		private void updnPollingChanged(object sender, EventArgs e)
 		{
 			if (updnPolling.Value == 11) updnPolling.Value = 10;
 			_PollingTimer.Interval = Convert.ToInt16(updnPolling.Value);
+		}
+
+		private void PollingEvent(Object myObject, EventArgs myEventArgs)
+		{
+			for (var controllerIndex=0; controllerIndex < kControllerCount; controllerIndex++)
+			{
+				byte buttonsVal = _DataCollector.Buttons[controllerIndex];
+				for (int i=0; i<kButtonCount; i++)
+				{
+					if ((buttonsVal & 0x01) == 1)
+						_Buttons[controllerIndex, i].BackColor = Color.LimeGreen;
+					else
+						_Buttons[controllerIndex, i].BackColor = kDefautlBkColor;
+
+					buttonsVal >>= 1;
+				}
+			}
+		}
+
+		private void btnExit_Click(object sender, EventArgs e)
+		{
+			_DataCollector.StopPolling();
+			
+			Application.Exit();
 		}
 
 		private void FillControllArrays()
@@ -166,33 +185,6 @@ namespace _2019_Scouting
 			_Controllers[7] = groupBox7;
 		}
 
-		private void PollingEvent(Object myObject, EventArgs myEventArgs)
-		{
-			foreach (var kvp in _PortList)
-			{
-				byte btButtons = PollController(kvp.Key);
-				for (int i=0; i<8; i++)
-				{
-					_Buttons[kvp.Key, i].BackColor = ((btButtons & 0x01) == 1) 
-														? Color.Red 
-														: Color.FromArgb(255, 240, 240, 240);
-					btButtons >>= 1;
-				}
-			}
-		}
+	}	// MainForm Class
 
-		private byte PollController(int portKey)
-		{
-			var port = _PortList[portKey];
-			port.Write("b");
-			var csButtons = port.ReadLine().Substring(2);
-			byte btButtons  = byte.Parse(csButtons, System.Globalization.NumberStyles.HexNumber);
-			return btButtons;
-		}
-
-		private void btnExit_Click(object sender, EventArgs e)
-		{
-			Application.Exit();
-		}
-	}
-}
+}	// namespace

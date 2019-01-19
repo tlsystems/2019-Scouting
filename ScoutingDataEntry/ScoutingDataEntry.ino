@@ -6,6 +6,15 @@
     Author:     tls-mobile7\tomh
 */
 
+enum
+{
+	eLED_ON,
+	eLED_OFF,
+	eLED_Toggle
+};
+
+bool _bFlashLED = false;
+
 void setup()
 {
 	// buttons
@@ -24,41 +33,82 @@ void setup()
 	pinMode(12, INPUT_PULLUP);
 	pinMode(13, OUTPUT);
 	pinMode(19, OUTPUT);
+	digitalWrite(19,HIGH);
 
 	Serial.begin(115200);
 }
+
 
 void loop()
 {
 	static uint32_t lastMillis = 0;
 	static uint8_t buttons;
 	static uint8_t switches;
-	static char responseBuffer[5];
+	static char responseBuffer[3];
+
 	buttons  = PollButtons();
 	switches = PollSwitches();
 
-	if (millis() - lastMillis > 500)
+	if (_bFlashLED && (millis() - lastMillis > 500))
 	{
 		lastMillis = millis();
-		digitalWrite(19, !digitalRead(19));
+		SetLED(eLED_Toggle);
 	}
+	
 	if (Serial.available() > 0)
 	{
 		switch(Serial.read())
 		{
+		case 's':
+			FormatResponse(switches, responseBuffer);
+			Serial.println(responseBuffer);
+			SetLED(eLED_Toggle);
+			break;
+
 		case 'b':
 			FormatResponse(buttons, responseBuffer);
 			Serial.println(responseBuffer);
 			break;
 
-		case 's':
-			FormatResponse(switches, responseBuffer);
-			Serial.println(responseBuffer);
+		case '0':
+			_bFlashLED = false;
+			SetLED(eLED_OFF);
+			break;
+
+		case '1':
+			_bFlashLED = false;
+			SetLED(eLED_ON);
+			break;
+
+		case 'f':
+			_bFlashLED = true;
+			break;
+
+		case 'v':
+			Serial.println("v0.02");
 			break;
 
 		default:
 			break;
 		}
+	}
+}
+
+void SetLED(int action)
+{
+	switch (action)
+	{
+		case eLED_ON:
+			digitalWrite(19, LOW);
+			break;
+		case eLED_OFF:
+			digitalWrite(19, HIGH);
+			break;
+		case eLED_Toggle:
+			digitalWrite(19, !digitalRead(19));
+			break;
+		default:
+			break;
 	}
 }
 
@@ -87,10 +137,9 @@ uint16_t PollSwitches()
 
 void FormatResponse(uint16_t inputData, char* pBuffer)
 {
-	*pBuffer++ = '0';
-	*pBuffer++ = 'X';
 	*pBuffer++ = Bin2Hex((inputData >> 4) & 0x0f);
 	*pBuffer++ = Bin2Hex((inputData >> 0) & 0x0f);
+	*pBuffer = '\0';
 }
 
 char Bin2Hex(byte inData)
