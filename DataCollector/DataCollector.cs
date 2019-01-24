@@ -26,6 +26,11 @@ namespace DataCollector
 		public bool[] Active  { get { return _Active; } set { } }
 		public string[] PortInfo { get { return _PortInfo; } set { } }
 
+		private enum ePoll
+		{
+			pollSwitches,
+			pollButtons
+		};
 
 		public DataCollector(int controllerCount)
 		{
@@ -48,18 +53,14 @@ namespace DataCollector
 				port.Open();
 
 				string version;
-				if (!QueryPort(port, 'v', out version))
+				if (!QueryPort(port, "v", out version))
 					continue;
 
-				string switchVal;
-				if (!QueryPort(port, 's', out switchVal))
+				int key = PollController(port, ePoll.pollSwitches);
+				if (key < 0 || key >= _PortCount)
 					continue;
 
-				uint key = uint.Parse(switchVal.Substring(0, 2), NumberStyles.HexNumber);
-				if (key >= _PortCount)
-					continue;
-
-				_PortList.Add(key, port);
+				_PortList.Add((uint)key, port);
 				_Active[key] = true;
 				_PortInfo[key] = $"{portName} {version}";
 			}
@@ -78,35 +79,37 @@ namespace DataCollector
 		public void StopPolling()
 		{
 			_PollingTimer.Enabled = false;
-			foreach (var port in _PortList.Values)
-			{
-				port.Write("b");
-			}
 		}
 
 		private void OnTimerEvent(Object source, ElapsedEventArgs e)
 		{
 			foreach (var kvp in _PortList)
 			{
-				Buttons[(int)kvp.Key] = (byte)PollController(kvp.Value);
+				_Buttons[(int)kvp.Key] = (byte)PollController(kvp.Value, ePoll.pollButtons);
 			}
 			_PollingTimer.Enabled = true;
 		}
 
-		private int PollController(SerialPort port)
+		private int PollController(SerialPort port, ePoll pollID)
 		{
-			if (!QueryPort(port, 'b', out string buttonStr))
+			string queryRsp = "";
+			bool queryOK = false;
+			if (pollID == ePoll.pollSwitches)
+				queryOK = QueryPort(port, "ps", out queryRsp);
+			else if (pollID == ePoll.pollButtons)
+				queryOK = QueryPort(port, "pb", out queryRsp);
+			
+			if (!queryOK)
 				return -1;
 
-			return int.Parse(buttonStr.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
+			return int.Parse(queryRsp.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
 		}
 
-		bool QueryPort(SerialPort port, char chQuery, out string response )
+		bool QueryPort(SerialPort port, string query, out string response )
 		{
-			char[] chBuf = { chQuery };
 			try
 			{
-				port.Write(chBuf, 0, 1);
+				port.Write(query);
 				response = port.ReadLine();
 			}
 			catch (TimeoutException)
